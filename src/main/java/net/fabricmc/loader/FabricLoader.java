@@ -19,17 +19,14 @@ package net.fabricmc.loader;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import net.fabricmc.loader.api.metadata.ModDependency;
+import net.fabricmc.loader.metadata.ModMetadataV0;
+import net.fabricmc.loader.util.TopologicalSorter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -195,6 +192,7 @@ public class FabricLoader implements net.fabricmc.loader.api.FabricLoader {
 		for (ModCandidate candidate : candidateMap.values()) {
 			addMod(candidate);
 		}
+//		sortMods();
 	}
 
 	protected void finishModLoading() {
@@ -293,37 +291,25 @@ public class FabricLoader implements net.fabricmc.loader.api.FabricLoader {
 		}
 	}
 
-	/* private void sortMods() {
+	private void sortMods() {
 		LOGGER.debug("Sorting mods");
-
-		LinkedList<ModContainer> sorted = new LinkedList<>();
-		for (ModContainer mod : mods) {
-			if (sorted.isEmpty() || mod.getInfo().getRequires().size() == 0) {
-				sorted.addFirst(mod);
-			} else {
-				boolean b = false;
-				l1:
-				for (int i = 0; i < sorted.size(); i++) {
-					for (Map.Entry<String, ModMetadataV0.Dependency> entry : sorted.get(i).getInfo().getRequires().entrySet()) {
-						String depId = entry.getKey();
-						ModMetadataV0.Dependency dep = entry.getValue();
-
-						if (depId.equalsIgnoreCase(mod.getInfo().getId()) && dep.satisfiedBy(mod.getInfo())) {
-							sorted.add(i, mod);
-							b = true;
-							break l1;
-						}
-					}
-				}
-
-				if (!b) {
-					sorted.addLast(mod);
-				}
+		TopologicalSorter<ModContainer> sorter = new TopologicalSorter<>(mods);
+		for(ModContainer container : mods) {
+			for(ModDependency dependency : container.getInfo().getDepends()) {
+				ModContainer container1 = modMap.get(dependency.getModId());
+				sorter.addAfterDependency(container, container1);
+			}
+			for(ModDependency dependency : container.getInfo().getRecommends()) {
+				ModContainer container1 = modMap.get(dependency.getModId());
+				sorter.addAfterDependency(container, container1);
+			}
+			for(ModDependency dependency : container.getInfo().getSuggests()) {
+				ModContainer container1 = modMap.get(dependency.getModId());
+				sorter.addAfterDependency(container, container1);
 			}
 		}
-
-		mods = sorted;
-	} */
+		mods = sorter.sort();
+	}
 
 	private void setupLanguageAdapters() {
 		adapterMap.put("default", DefaultLanguageAdapter.INSTANCE);
